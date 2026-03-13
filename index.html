@@ -250,6 +250,7 @@
             uniform float u_floatOffset;
             uniform vec3 u_tintColor;
             uniform float u_vignetteEnabled;
+            uniform float u_time;
 
             vec2 getTexCoord(vec2 uv) {
                 float screenAspect = u_resolution.x / u_resolution.y;
@@ -289,13 +290,53 @@
                 }
 
                 vec4 originalColor = sampleTexture(baseCoord);
+                vec3 accum = originalColor.rgb * 1.1;
                 
-                float vignette = 1.0 - length(vUv - 0.5) * 0.8;
-                vignette = clamp(vignette, 0.0, 1.0);
+                if (u_vignetteEnabled > 0.5) {
+                    float time = u_time * 1.5;
+                    
+                    for (int i = 1; i <= 6; i++) {
+                        float fi = float(i);
+                        
+                        float angle1 = time * 0.8 + fi * 2.0;
+                        float angle2 = time * 1.2 + fi * 1.5;
+                        
+                        vec2 offset = vec2(
+                            sin(angle1) * 0.025 * fi + cos(time * 0.5 + fi) * 0.015,
+                            cos(angle2) * 0.025 * fi + sin(time * 0.7 + fi) * 0.015
+                        );
+                        
+                        offset.x += sin(time * 3.0 + fi) * 0.008;
+                        offset.y += cos(time * 2.5 + fi) * 0.008;
+                        
+                        vec2 offsetCoord = baseCoord + offset;
+                        vec4 afterimageColor = sampleTexture(offsetCoord);
+                        
+                        vec3 tint = vec3(1.2, 0.4, 0.3);
+                        if (i % 2 == 0) {
+                            tint = vec3(0.4, 0.2, 0.6);
+                        }
+                        
+                        vec3 tinted = afterimageColor.rgb * tint;
+                        float weight = 0.3 * (1.0 - 0.1 * fi) * (0.8 + 0.2 * sin(time * 2.0 + fi));
+                        weight = max(weight, 0.05);
+                        
+                        accum += tinted * weight;
+                    }
+                    
+                    for (int i = 1; i <= 3; i++) {
+                        float fi = float(i);
+                        vec2 offset2 = vec2(
+                            cos(u_time * 1.1 + fi) * 0.03 * fi,
+                            sin(u_time * 0.9 + fi) * 0.03 * fi
+                        );
+                        vec2 coord2 = baseCoord - offset2;
+                        vec4 col2 = sampleTexture(coord2);
+                        accum += col2.rgb * vec3(0.3, 0.1, 0.5) * 0.2;
+                    }
+                }
                 
-                vec3 finalColor = originalColor.rgb + u_tintColor * (1.0 - vignette) * u_vignetteEnabled * 0.3;
-                
-                gl_FragColor = vec4(finalColor, originalColor.a);
+                gl_FragColor = vec4(accum, originalColor.a);
             }
         `;
 
