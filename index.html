@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Deltarune · Roaring Knight 残影模拟 (WebGL)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            background-color: #0a0a0a;
+            color: #e0b0a0;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(10, 10, 10, 0.7);
+            padding: 12px 24px;
+            border-left: 4px solid #a55;
+            border-radius: 0 12px 12px 0;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 0 20px rgba(150, 40, 40, 0.3);
+            pointer-events: none;
+            text-shadow: 0 0 8px #f44;
+        }
+        #info h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 4px;
+            font-weight: normal;
+            color: #ffb0a0;
+        }
+        #info p {
+            margin: 4px 0 0;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+        #upload-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            background: rgba(20, 10, 10, 0.8);
+            padding: 12px 24px;
+            border-radius: 60px;
+            border: 1px solid #a55;
+            backdrop-filter: blur(8px);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            box-shadow: 0 0 30px rgba(180, 60, 60, 0.5);
+            color: #ffc0b0;
+        }
+        #upload-container label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1rem;
+            transition: 0.2s;
+            padding: 6px 16px;
+            background: #2a1a1a;
+            border-radius: 40px;
+            border: 1px solid #b77;
+        }
+        #upload-container label:hover {
+            background: #3f2a2a;
+            border-color: #faa;
+            box-shadow: 0 0 15px #f66;
+        }
+        #upload-container span {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        #file-name {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        #credit {
+            position: absolute;
+            bottom: 20px;
+            right: 25px;
+            z-index: 15;
+            font-size: 0.75rem;
+            opacity: 0.5;
+            color: #b88;
+            letter-spacing: 1px;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1> ROARING KNIGHT SHADE </h1>
+        <p> 基于 WebGL 实时合成 </p>
+    </div>
+    <div id="upload-container">
+        <label for="image-upload">
+            <span>📂</span> 传入图片
+        </label>
+        <input type="file" id="image-upload" accept="image/png, image/jpeg, image/webp, image/jpg">
+        <span id="file-name">默认剪影IDLE</span>
+    </div>
+    <div id="credit">DELTARUNE · ROARING KNIGHT </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050101);
+        
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+        camera.position.z = 1;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        function createKnightTexture() {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, size, size);
+
+            ctx.strokeStyle = '#aa5555';
+            ctx.fillStyle = '#331111';
+            ctx.lineWidth = 12;
+            
+            ctx.fillStyle = '#220a0a';
+            ctx.strokeStyle = '#b06a6a';
+            ctx.beginPath();
+            ctx.ellipse(size/2, size*0.4, size*0.2, size*0.18, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(size*0.4, size*0.3);
+            ctx.lineTo(size*0.25, size*0.15);
+            ctx.lineTo(size*0.2, size*0.2);
+            ctx.strokeStyle = '#c08080';
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(size*0.6, size*0.3);
+            ctx.lineTo(size*0.75, size*0.15);
+            ctx.lineTo(size*0.8, size*0.2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#a33';
+            ctx.beginPath();
+            ctx.arc(size*0.42, size*0.4, size*0.03, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#e55';
+            ctx.beginPath();
+            ctx.arc(size*0.58, size*0.4, size*0.03, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle = '#441111';
+            ctx.strokeStyle = '#a44';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(size*0.5, size*0.55);
+            ctx.lineTo(size*0.35, size*0.85);
+            ctx.lineTo(size*0.65, size*0.85);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#883333';
+            ctx.beginPath();
+            ctx.rect(size*0.45, size*0.7, size*0.1, size*0.15);
+            ctx.fill();
+            ctx.strokeStyle = '#d88';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(size*0.45, size*0.7, size*0.1, size*0.15);
+
+            ctx.strokeStyle = '#aa5555';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(size*0.2 + i*20, size*0.9 - i*10);
+                ctx.lineTo(size*0.8 - i*20, size*0.9 - i*10);
+                ctx.strokeStyle = `rgba(200, 100, 100, ${0.2 + i*0.05})`;
+                ctx.stroke();
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const defaultTexture = createKnightTexture();
+        defaultTexture.minFilter = THREE.LinearFilter;
+        defaultTexture.magFilter = THREE.LinearFilter;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+
+        const uniforms = {
+            u_texture: { value: defaultTexture },
+            u_textureSize: { value: new THREE.Vector2(512, 512) },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_time: { value: 0.0 },
+            u_floatOffset: { value: 0.0 }
+        };
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const idleFragmentShader = `
+            precision highp float;
+            varying vec2 vUv;
+
+            uniform sampler2D u_texture;
+            uniform vec2 u_textureSize;
+            uniform vec2 u_resolution;
+            uniform float u_floatOffset;
+
+            vec2 getTexCoord(vec2 uv) {
+                float screenAspect = u_resolution.x / u_resolution.y;
+                float texAspect = u_textureSize.x / u_textureSize.y;
+                
+                vec2 result = uv;
+                if (screenAspect > texAspect) {
+                    result.x = (uv.x - 0.5) * (screenAspect / texAspect) + 0.5;
+                    if (result.x < 0.0 || result.x > 1.0) {
+                        return vec2(-1.0);
+                    }
+                } else {
+                    result.y = (uv.y - 0.5) * (texAspect / screenAspect) + 0.5;
+                    if (result.y < 0.0 || result.y > 1.0) {
+                        return vec2(-1.0);
+                    }
+                }
+                return result;
+            }
+
+            vec4 sampleTexture(vec2 coord) {
+                if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0) {
+                    return vec4(0.0);
+                }
+                return texture2D(u_texture, coord);
+            }
+
+            void main() {
+                vec2 floatCoord = vUv;
+                floatCoord.y -= u_floatOffset;
+                
+                vec2 baseCoord = getTexCoord(floatCoord);
+                
+                if (baseCoord.x < 0.0) {
+                    gl_FragColor = vec4(0.0);
+                    return;
+                }
+
+                vec4 originalColor = sampleTexture(baseCoord);
+                gl_FragColor = originalColor;
+            }
+        `;
+
+        const idleMaterial = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: idleFragmentShader,
+            uniforms: uniforms,
+            transparent: true
+        });
+
+        const idleMesh = new THREE.Mesh(geometry, idleMaterial);
+        idleMesh.position.z = 0.1;
+        scene.add(idleMesh);
+
+        class Afterimage {
+            constructor(texture, textureSize, birthTime, initialY) {
+                this.birthTime = birthTime;
+                this.lifetime = 15.0;
+                this.windSpeed = 5.5;
+                this.initialY = initialY;
+                
+                const material = new THREE.ShaderMaterial({
+                    vertexShader: vertexShader,
+                    fragmentShader: `
+                        precision highp float;
+                        varying vec2 vUv;
+
+                        uniform sampler2D u_texture;
+                        uniform vec2 u_textureSize;
+                        uniform vec2 u_resolution;
+                        uniform float u_time;
+                        uniform float u_birthTime;
+                        uniform float u_lifetime;
+                        uniform float u_windSpeed;
+
+                        vec2 getTexCoord(vec2 uv) {
+                            float screenAspect = u_resolution.x / u_resolution.y;
+                            float texAspect = u_textureSize.x / u_textureSize.y;
+                            
+                            vec2 result = uv;
+                            if (screenAspect > texAspect) {
+                                result.x = (uv.x - 0.5) * (screenAspect / texAspect) + 0.5;
+                            } else {
+                                result.y = (uv.y - 0.5) * (texAspect / screenAspect) + 0.5;
+                            }
+                            return result;
+                        }
+
+                        void main() {
+                            float age = u_time - u_birthTime;
+                            float alpha = 1.0 - (age / u_lifetime);
+                            
+                            if (alpha <= 0.0) {
+                                discard;
+                            }
+                            
+                            vec2 texCoord = getTexCoord(vUv);
+                            vec4 color = texture2D(u_texture, texCoord);
+                            
+                            gl_FragColor = vec4(color.rgb, alpha * 0.4);
+                        }
+                    `,
+                    uniforms: {
+                        u_texture: { value: texture },
+                        u_textureSize: { value: textureSize },
+                        u_resolution: { value: uniforms.u_resolution.value.clone() },
+                        u_time: { value: 0.0 },
+                        u_birthTime: { value: this.birthTime },
+                        u_lifetime: { value: this.lifetime },
+                        u_windSpeed: { value: this.windSpeed }
+                    },
+                    transparent: true,
+                    depthWrite: false
+                });
+
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.z = -0.1;
+                this.initialY = initialY;
+            }
+
+            update(time) {
+                this.mesh.material.uniforms.u_time.value = time;
+                
+                const age = time - this.birthTime;
+                const windOffset = this.windSpeed * age;
+                this.mesh.position.x = windOffset;
+                this.mesh.position.y = this.initialY;
+            }
+
+            isDead(time) {
+                return (time - this.birthTime) >= this.lifetime;
+            }
+
+            dispose() {
+                scene.remove(this.mesh);
+                this.mesh.material.dispose();
+            }
+        }
+
+        const afterimages = [];
+        let spawnTimer = 0;
+        const spawnInterval = 0.04;
+
+        const fileInput = document.getElementById('image-upload');
+        const fileNameSpan = document.getElementById('file-name');
+
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            fileNameSpan.textContent = file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const texture = new THREE.Texture(img);
+                    texture.minFilter = THREE.LinearFilter;
+                    texture.magFilter = THREE.LinearFilter;
+                    texture.needsUpdate = true;
+
+                    uniforms.u_texture.value = texture;
+                    uniforms.u_textureSize.value.set(img.width, img.height);
+
+                    afterimages.forEach(ai => {
+                        ai.mesh.material.uniforms.u_texture.value = texture;
+                        ai.mesh.material.uniforms.u_textureSize.value.set(img.width, img.height);
+                    });
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            renderer.setSize(width, height);
+            uniforms.u_resolution.value.set(width, height);
+
+            afterimages.forEach(ai => {
+                ai.mesh.material.uniforms.u_resolution.value.set(width, height);
+            });
+        }
+
+        let clock = new THREE.Clock();
+        
+        const floatConfig = {
+            amplitude: 0.04,
+            frequency: 1.2,
+            speed: 1.0
+        };
+        
+        let floatTime = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+            
+            uniforms.u_time.value = time;
+            
+            floatTime += delta * floatConfig.speed;
+            const floatOffset = Math.sin(floatTime * floatConfig.frequency) * floatConfig.amplitude;
+            uniforms.u_floatOffset.value = floatOffset;
+
+            spawnTimer += delta;
+            if (spawnTimer >= spawnInterval) {
+                spawnTimer = 0;
+                const floatOffset = Math.sin(floatTime * floatConfig.frequency) * floatConfig.amplitude;
+                const afterimage = new Afterimage(
+                    uniforms.u_texture.value,
+                    uniforms.u_textureSize.value,
+                    time,
+                    floatOffset
+                );
+                scene.add(afterimage.mesh);
+                afterimages.push(afterimage);
+            }
+
+            for (let i = afterimages.length - 1; i >= 0; i--) {
+                const ai = afterimages[i];
+                ai.update(time);
+                
+                if (ai.isDead(time)) {
+                    ai.dispose();
+                    afterimages.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+
+        console.log('Roaring Knight 残影演示已启动');
+    </script>
+</body>
+</html>

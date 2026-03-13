@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Deltarune · Roaring Knight 残影模拟 (WebGL)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            background-color: #0a0a0a;
+            color: #e0b0a0;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(10, 10, 10, 0.7);
+            padding: 12px 24px;
+            border-left: 4px solid #a55;
+            border-radius: 0 12px 12px 0;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 0 20px rgba(150, 40, 40, 0.3);
+            pointer-events: none;
+            text-shadow: 0 0 8px #f44;
+        }
+        #info h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 4px;
+            font-weight: normal;
+            color: #ffb0a0;
+        }
+        #info p {
+            margin: 4px 0 0;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+        #upload-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            background: rgba(20, 10, 10, 0.8);
+            padding: 12px 24px;
+            border-radius: 60px;
+            border: 1px solid #a55;
+            backdrop-filter: blur(8px);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            box-shadow: 0 0 30px rgba(180, 60, 60, 0.5);
+            color: #ffc0b0;
+        }
+        #upload-container label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1rem;
+            transition: 0.2s;
+            padding: 6px 16px;
+            background: #2a1a1a;
+            border-radius: 40px;
+            border: 1px solid #b77;
+        }
+        #upload-container label:hover {
+            background: #3f2a2a;
+            border-color: #faa;
+            box-shadow: 0 0 15px #f66;
+        }
+        #upload-container span {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        #file-name {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        #credit {
+            position: absolute;
+            bottom: 20px;
+            right: 25px;
+            z-index: 15;
+            font-size: 0.75rem;
+            opacity: 0.5;
+            color: #b88;
+            letter-spacing: 1px;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1>⚔️ ROARING KNIGHT · 残影 ⚔️</h1>
+        <p>afterimage distortion · 混沌残像 · 基于 WebGL 实时合成</p>
+    </div>
+    <div id="upload-container">
+        <label for="image-upload">
+            <span>📂</span> 传入图片
+        </label>
+        <input type="file" id="image-upload" accept="image/png, image/jpeg, image/webp, image/jpg">
+        <span id="file-name">默认骑士剪影</span>
+    </div>
+    <div id="credit">DELTARUNE · ROARING KNIGHT 印象 | 残影演示</div>
+
+    <!-- 引入 Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 初始化场景、相机、渲染器 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050101); // 极黑底色
+        
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+        camera.position.z = 1;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 限制过高pixel ratio防止性能问题
+        document.body.appendChild(renderer.domElement);
+
+        // --- 生成默认的“骑士剪影”纹理 (Canvas 2D) ---
+        function createKnightTexture() {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // 清空为黑色背景
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, size, size);
+
+            // 绘制暗红色调的低光轮廓，更符合 Roaring Knight 的阴沉感
+            ctx.strokeStyle = '#aa5555';
+            ctx.fillStyle = '#331111';
+            ctx.lineWidth = 12;
+            
+            // 头盔主体 (带棱角的)
+            ctx.fillStyle = '#220a0a';
+            ctx.strokeStyle = '#b06a6a';
+            ctx.beginPath();
+            ctx.ellipse(size/2, size*0.4, size*0.2, size*0.18, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            // 两个弯曲的角 (标志性)
+            ctx.beginPath();
+            ctx.moveTo(size*0.4, size*0.3);
+            ctx.lineTo(size*0.25, size*0.15);
+            ctx.lineTo(size*0.2, size*0.2);
+            ctx.strokeStyle = '#c08080';
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(size*0.6, size*0.3);
+            ctx.lineTo(size*0.75, size*0.15);
+            ctx.lineTo(size*0.8, size*0.2);
+            ctx.stroke();
+
+            // 眼部裂隙 (发出微光)
+            ctx.fillStyle = '#a33';
+            ctx.beginPath();
+            ctx.arc(size*0.42, size*0.4, size*0.03, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#e55';
+            ctx.beginPath();
+            ctx.arc(size*0.58, size*0.4, size*0.03, 0, Math.PI*2);
+            ctx.fill();
+
+            // 披风 / 残破碎片 (用三角形表现)
+            ctx.fillStyle = '#441111';
+            ctx.strokeStyle = '#a44';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(size*0.5, size*0.55);
+            ctx.lineTo(size*0.35, size*0.85);
+            ctx.lineTo(size*0.65, size*0.85);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 剑柄 / 混沌能量
+            ctx.fillStyle = '#883333';
+            ctx.beginPath();
+            ctx.rect(size*0.45, size*0.7, size*0.1, size*0.15);
+            ctx.fill();
+            ctx.strokeStyle = '#d88';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(size*0.45, size*0.7, size*0.1, size*0.15);
+
+            // 一些残影似的白色线条 (象征残像)
+            ctx.strokeStyle = '#aa5555';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(size*0.2 + i*20, size*0.9 - i*10);
+                ctx.lineTo(size*0.8 - i*20, size*0.9 - i*10);
+                ctx.strokeStyle = `rgba(200, 100, 100, ${0.2 + i*0.05})`;
+                ctx.stroke();
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const defaultTexture = createKnightTexture();
+        defaultTexture.minFilter = THREE.LinearFilter;
+        defaultTexture.magFilter = THREE.LinearFilter;
+
+        // --- 创建全屏平面几何 (2x2 覆盖NDC) ---
+        const geometry = new THREE.PlaneGeometry(2, 2);
+
+        // --- 着色器 uniforms ---
+        const uniforms = {
+            u_texture: { value: defaultTexture },
+            u_textureSize: { value: new THREE.Vector2(512, 512) },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_time: { value: 0.0 }
+        };
+
+        // --- 顶点着色器 (简单传递UV) ---
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        // --- 片段着色器 (核心残影效果) ---
+        const fragmentShader = `
+            precision highp float;
+            varying vec2 vUv;
+
+            uniform sampler2D u_texture;
+            uniform vec2 u_textureSize;
+            uniform vec2 u_resolution;
+            uniform float u_time;
+
+            // 辅助函数：将屏幕uv转换为保持比例的纹理uv (contain 模式，黑边显示纯黑)
+            vec2 getTexCoord(vec2 uv) {
+                float screenAspect = u_resolution.x / u_resolution.y;
+                float texAspect = u_textureSize.x / u_textureSize.y;
+                
+                vec2 result = uv;
+                // 默认初始化为无效值 (超出0-1范围)
+                if (screenAspect > texAspect) {
+                    // 垂直方向填满，水平方向有黑边
+                    result.x = (uv.x - 0.5) * (screenAspect / texAspect) + 0.5;
+                    // 如果在水平黑边区域，返回(-1,-1)便于丢弃
+                    if (result.x < 0.0 || result.x > 1.0) {
+                        return vec2(-1.0);
+                    }
+                } else {
+                    // 水平方向填满，垂直方向有黑边
+                    result.y = (uv.y - 0.5) * (texAspect / screenAspect) + 0.5;
+                    if (result.y < 0.0 || result.y > 1.0) {
+                        return vec2(-1.0);
+                    }
+                }
+                return result;
+            }
+
+            // 安全采样：坐标无效或超出范围返回黑色
+            vec4 sampleTexture(vec2 coord) {
+                if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0) {
+                    return vec4(0.0);
+                }
+                return texture2D(u_texture, coord);
+            }
+
+            void main() {
+                // 获取基础纹理坐标 (考虑比例)
+                vec2 baseCoord = getTexCoord(vUv);
+                
+                // 如果坐标无效 (黑边区域) 直接输出纯黑色
+                if (baseCoord.x < 0.0) {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                    return;
+                }
+
+                // 原始颜色采样
+                vec4 originalColor = sampleTexture(baseCoord);
+                
+                // 残影参数: 层数, 强度, 颜色偏移
+                const int layers = 8;
+                float intensityBase = 0.25;      // 基础残影强度
+                float time = u_time * 1.5;        // 时间缩放
+
+                // 初始化累加颜色为原始颜色 (保留原始成分)
+                vec3 accum = originalColor.rgb * 0.7;   // 原始压暗一点，让残影更明显
+                
+                // 循环生成多重残影
+                for (int i = 1; i <= layers; i++) {
+                    float fi = float(i);
+                    
+                    // 每层不同的角度和幅度，随时间变化
+                    float angle1 = time * 0.8 + fi * 2.0;
+                    float angle2 = time * 1.2 + fi * 1.5;
+                    
+                    // 偏移向量: 随层数增大偏移量，且方向旋转
+                    vec2 offset = vec2(
+                        sin(angle1) * 0.012 * fi + cos(time * 0.5 + fi) * 0.008,
+                        cos(angle2) * 0.012 * fi + sin(time * 0.7 + fi) * 0.008
+                    );
+                    
+                    // 稍微增加一些不规则抖动
+                    offset.x += sin(time * 3.0 + fi) * 0.004;
+                    offset.y += cos(time * 2.5 + fi) * 0.004;
+                    
+                    // 计算偏移后的纹理坐标
+                    vec2 offsetCoord = baseCoord + offset;
+                    
+                    // 采样残影颜色
+                    vec4 afterimageColor = sampleTexture(offsetCoord);
+                    
+                    // 残影颜色映射为红/暗色调 (Roaring Knight 的混沌感)
+                    vec3 tinted = afterimageColor.rgb * vec3(1.2, 0.5, 0.4); // 强化红/橙
+                    
+                    // 权重随层数递减，并且波动
+                    float weight = intensityBase * (1.0 - 0.12 * fi) * (0.8 + 0.2 * sin(time * 2.0 + fi));
+                    weight = max(weight, 0.02); // 不低于0.02
+                    
+                    // 累加残影
+                    accum += tinted * weight;
+                }
+                
+                // 再添加一层微弱的蓝色残影 (反向偏移) 增加层次
+                for (int i = 1; i <= 3; i++) {
+                    float fi = float(i);
+                    vec2 offset2 = vec2(
+                        cos(u_time * 1.1 + fi) * 0.018 * fi,
+                        sin(u_time * 0.9 + fi) * 0.018 * fi
+                    );
+                    vec2 coord2 = baseCoord - offset2; // 反向偏移
+                    vec4 col2 = sampleTexture(coord2);
+                    accum += col2.rgb * vec3(0.3, 0.2, 0.6) * 0.15; // 蓝紫色调
+                }
+
+                // 加上一些微小的闪烁噪点 (增加混沌感)
+                float grain = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);
+                accum += grain * 0.04 * vec3(0.8, 0.3, 0.2);
+
+                // 轻微暗角效果，聚焦中心
+                float vignette = 1.0 - length(vUv - 0.5) * 0.6;
+                accum *= vignette;
+
+                // 输出，alpha固定1.0
+                gl_FragColor = vec4(accum, 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: uniforms
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // --- 处理图片上传 ---
+        const fileInput = document.getElementById('image-upload');
+        const fileNameSpan = document.getElementById('file-name');
+
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 更新显示文件名
+            fileNameSpan.textContent = file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // 创建新纹理
+                    const texture = new THREE.Texture(img);
+                    texture.minFilter = THREE.LinearFilter;
+                    texture.magFilter = THREE.LinearFilter;
+                    texture.needsUpdate = true;
+
+                    // 更新 uniform
+                    uniforms.u_texture.value = texture;
+                    uniforms.u_textureSize.value.set(img.width, img.height);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // --- 窗口大小自适应 ---
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            renderer.setSize(width, height);
+            uniforms.u_resolution.value.set(width, height);
+
+            // 对于正交相机，不需要调整投影矩阵，因为我们使用的是NDC平面
+        }
+
+        // --- 动画循环 ---
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            uniforms.u_time.value += delta;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // 初始化分辨率 uniform
+        uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+
+        // 添加一点初始的波动，让默认图片也有动态效果
+        // (可选：每帧微小变化，已经在着色器里用u_time处理)
+
+        console.log('Roaring Knight 残影演示已启动');
+    </script>
+</body>
+</html>
